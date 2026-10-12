@@ -209,6 +209,13 @@ const showControls = shouldShowControls(items.length);
       noteInteraction();
     });
 
+    // Any touch/click cancels a programmatic scroll and counts as interaction,
+    // so swipe/resume behave even without hovering.
+    root.addEventListener('pointerdown', () => {
+      programmatic = false;
+      noteInteraction();
+    });
+
     dotsWrap.addEventListener('keydown', (event) => {
       if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
       event.preventDefault();
