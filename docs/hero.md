@@ -32,8 +32,13 @@ layered on top.
 - The active dot is derived from the track's real `scrollLeft` (nearest measured
   snap target), not from a private counter, so manual scroll and swipe keep it in
   sync.
-- Auto-advance is a ~6s loop. It pauses on hover/focus and during user
-  interaction, and resumes after a short idle delay.
+- Auto-advance is a ~6s loop. It pauses while the **dots** are hovered or
+  focused and during a settling manual scroll/swipe, and resumes after a short
+  idle delay.
+  - The hover pause is scoped to the dots, not the carousel root: the hero fills
+    the viewport, so a root-wide hover is almost always active on desktop and
+    left the timer permanently disarmed. The gating lives in
+    `shouldAutoplay()` (`src/lib/hero-carousel.ts`) so it is unit-tested.
 - `prefers-reduced-motion: reduce` disables auto-advance entirely and makes
   navigation jumps instant (no animated scroll).
 
@@ -50,7 +55,9 @@ following by hand with `npm run dev`:
 - 2+ items: one dot per item; the active dot tracks the visible slide.
 - Click/tap a dot: the track snaps to that slide.
 - Wait ~6s: advances to the next slide and loops from the last back to the first.
-- Hover or focus the carousel: auto-advance pauses; move away: it resumes.
+  Do this with the pointer **away** from the dots — the timer must run on a
+  desktop-sized viewport, not only on touch.
+- Hover or focus the dots: auto-advance pauses; move away: it resumes.
 - Scroll/swipe by hand: the active dot follows.
 - Keyboard: Tab to the dots, Enter/Space selects, Left/Right arrows move between
   them; focus ring is visible.
