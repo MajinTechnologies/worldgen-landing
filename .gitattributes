@@ -1,0 +1,9 @@
+# Line endings: store LF in the repository and check out LF on every
+# platform. This overrides core.autocrlf, which was producing the phantom
+# "LF will be replaced by CRLF" churn on every diff.
+* text=auto eol=lf
+
+# Binary assets -- never normalized.
+*.webp   binary
+*.woff2  binary
+*.ico    binary
