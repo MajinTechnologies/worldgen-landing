@@ -88,6 +88,7 @@ const showControls = shouldShowControls(items.length);
     INTERACTION_RESUME_MS,
     nearestIndex,
     nextIndex,
+    shouldAutoplay,
     shouldShowControls,
     wrapIndex,
   } from '../../lib/hero-carousel';
@@ -156,9 +157,16 @@ const showControls = shouldShowControls(items.length);
       track.scrollTo({ left: targets[next], behavior });
     };
 
+    // Only signals that mean "the user is engaging the controls" pause the
+    // timer. Hovering the hero at large is not one of them: the carousel fills
+    // the viewport, so that would stop auto-advance permanently on desktop.
+    const paused = () => hovered || focused;
+
     const scheduleAutoplay = () => {
       clearAutoplay();
-      if (reduceMotion.matches || hovered || focused) return;
+      if (!shouldAutoplay(slides.length, { paused: paused(), reduceMotion: reduceMotion.matches })) {
+        return;
+      }
       autoplayTimer = window.setTimeout(() => {
         goTo(nextIndex(index, slides.length));
         scheduleAutoplay();
@@ -167,7 +175,9 @@ const showControls = shouldShowControls(items.length);
 
     const requestResume = () => {
       clearResume();
-      if (reduceMotion.matches || hovered || focused) return;
+      if (!shouldAutoplay(slides.length, { paused: paused(), reduceMotion: reduceMotion.matches })) {
+        return;
+      }
       resumeTimer = window.setTimeout(scheduleAutoplay, INTERACTION_RESUME_MS);
     };
 
@@ -226,21 +236,24 @@ const showControls = shouldShowControls(items.length);
       noteInteraction();
     });
 
-    // Pause while hovered or focused, resume once the pointer/focus leaves.
-    root.addEventListener('pointerenter', () => {
+    // Pause while the dots are hovered or focused, and resume once the
+    // pointer/focus leaves them. Scoped to the controls — not the whole root —
+    // because the hero fills the viewport and a permanent hover there kept the
+    // timer disarmed (run #6 report).
+    dotsWrap.addEventListener('pointerenter', () => {
       hovered = true;
       clearAutoplay();
     });
-    root.addEventListener('pointerleave', () => {
+    dotsWrap.addEventListener('pointerleave', () => {
       hovered = false;
       requestResume();
     });
-    root.addEventListener('focusin', () => {
+    dotsWrap.addEventListener('focusin', () => {
       focused = true;
       clearAutoplay();
     });
-    root.addEventListener('focusout', () => {
-      focused = root.contains(document.activeElement);
+    dotsWrap.addEventListener('focusout', () => {
+      focused = dotsWrap.contains(document.activeElement);
       if (!focused) requestResume();
     });
 

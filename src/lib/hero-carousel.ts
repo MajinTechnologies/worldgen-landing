@@ -18,6 +18,24 @@ export function shouldShowControls(count: number): boolean {
   return count > 1;
 }
 
+/** Signals that pause the auto-advance timer while the user engages the carousel. */
+export interface AutoplayOptions {
+  /**
+   * The user is engaging the controls: hovering/focusing the dots, or a manual
+   * scroll/swipe that is still settling. Deliberately does NOT include hovering
+   * the hero at large — the carousel fills the viewport, so counting that as a
+   * pause would stop auto-advance permanently on desktop.
+   */
+  paused: boolean;
+  /** `prefers-reduced-motion: reduce` is active. */
+  reduceMotion: boolean;
+}
+
+/** Whether the auto-advance timer should be armed right now. */
+export function shouldAutoplay(count: number, options: AutoplayOptions): boolean {
+  return shouldShowControls(count) && !options.paused && !options.reduceMotion;
+}
+
 /** Normalise any index into [0, count). Safe for count <= 0. */
 export function wrapIndex(index: number, count: number): number {
   if (count <= 0) return 0;
