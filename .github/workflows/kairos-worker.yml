@@ -1,0 +1,74 @@
+# Workflow delgado del consumidor - Kairos CI (plantilla copiable).
+#
+# Este es el UNICO archivo que un repo consumidor copia. Dispara el pipeline
+# reutilizable PUBLICO de kairos-ci (kairos-pipeline.yml@vX.Y.Z), que a su vez
+# sincroniza el perfil `.opencode/` desde el tag `worker_ref` en runtime.
+#
+# Diseno: Majin-Circino#144 (comentarios "Diseno: Cadena de sesiones atomicas"
+# y "Contrato de secrets") + Majin-Kairos/protocols/ci-chain.md.
+#
+# Anti-loop (igual que el pipeline): solo GITHUB_TOKEN de Actions, disparo
+# exclusivo por label `kairos:ci` (nunca por status:*), concurrency serializada
+# y timeout de job.
+name: kairos-worker
+
+on:
+  issues:
+    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "chain = ejecuta la siguiente etapa de la cadena; auth-check = smoke test de credencial (valida y reporta el modo detectado, NO ejecuta etapa); guard-check = smoke test del catch-up guard (valida el scope actions:read y reporta skip/procede, NO ejecuta etapa)"
+        type: choice
+        options:
+          - chain
+          - auth-check
+          - guard-check
+        default: chain
+  schedule:
+    # Catch-up 6x diario (01/05/09/14/18/22 ART = 04/08/12/17/21/01 UTC, el 22 ART cae al dia UTC siguiente): reanuda issues con kairos:ci que no avanzaron por evento.
+    - cron: "0 1,4,8,12,17,21 * * *"
+
+permissions:
+  contents: write   # etapa 3: crea ramas y pushea (flujo branch + PR)
+  issues: write     # comentarios + labels de la cadena
+  pull-requests: write  # worker crea/edita PRs y pide reviewers (flujo branch + PR)
+  actions: read     # el guard lista workflow runs via API
+
+concurrency:
+  group: kairos-worker
+  cancel-in-progress: false
+
+jobs:
+  worker:
+    # Solo label kairos:ci (y solo issues abiertos). Demas labels: no corre.
+    if: >-
+      github.event_name != 'issues' ||
+      (github.event.label.name == 'kairos:ci' && github.event.issue.state == 'open')
+    # Invoca el pipeline reutilizable PUBLICO (kairos-ci). La plomeria es
+    # publica; el perfil `.opencode/` sigue PRIVADO en kairos-worker-poc y lo
+    # baja el pipeline en runtime via KAIROS_WORKER_TOKEN.
+    #
+    # El perfil `.opencode/` NO viaja entre jobs (este job corre en un runner
+    # nuevo): lo sincroniza el propio pipeline reutilizable desde `worker_ref`,
+    # por eso el input se pasa aca.
+    #
+    # bump: el ref del `uses:` es la version de kairos-ci (vX.Y.Z); el input
+    # `worker_ref` es el tag del perfil privado en kairos-worker-poc (kairos/vX.Y.Z).
+    uses: MajinTechnologies/kairos-ci/.github/workflows/kairos-pipeline.yml@v1.0.1
+    with:
+      mode: ${{ inputs.mode || 'chain' }}
+      issue_number: ${{ github.event.issue.number }}
+      event_name: ${{ github.event_name }}
+      worker_ref: kairos/v1.1.0
+      operator_name: "Equipo de Majin"   # ajustar por proyecto (MAJIN_OPERATOR_NAME)
+    # Secretos: OPENCODE_AUTH/GROQ_API_KEY opcionales (auth del worker);
+    # KAIROS_WORKER_TOKEN es el PAT fine-grained que baja el perfil .opencode/
+    # del repo worker PRIVADO (lo usa el pipeline via `token:` en el checkout
+    # cross-repo). Si el consumidor ya tiene un secret homonimo propio, este
+    # wiring lo toma automatico; si no, basta un secret de ORG con el mismo
+    # nombre (contents+metadata read sobre kairos-worker-poc).
+    secrets:
+      OPENCODE_AUTH: ${{ secrets.OPENCODE_AUTH }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      KAIROS_WORKER_TOKEN: ${{ secrets.KAIROS_WORKER_TOKEN }}
