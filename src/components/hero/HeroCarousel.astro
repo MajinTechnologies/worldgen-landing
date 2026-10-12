@@ -1,19 +1,31 @@
 ---
 import type { HeroMedia } from '../../lib/hero-media';
+import { shouldShowControls } from '../../lib/hero-carousel';
 
 interface Props {
   items: readonly HeroMedia[];
 }
 
 const { items } = Astro.props;
+
+/**
+ * Progressive enhancement: the dots are part of the server-rendered HTML but
+ * only become visible/interactive once the script below marks the carousel as
+ * ready. Without JS this renders exactly the scroll-snap track it always did
+ * (see the .hero-track comment in src/styles/hero.css).
+ */
+const showControls = shouldShowControls(items.length);
 ---
 
-<div class="relative flex h-full w-full items-center justify-center">
+<div
+  class="hero-carousel relative flex h-full w-full items-center justify-center"
+  data-hero-carousel
+>
   {
     items.length > 0 ? (
-      <ul class="hero-track mask-[var(--hero-mask)]">
+      <ul class="hero-track mask-[var(--hero-mask)]" data-hero-track>
         {items.map((item) => (
-          <li class="hero-slide">
+          <li class="hero-slide" data-hero-slide>
             {item.kind === 'video' ? (
               <video
                 class="h-full w-full object-cover"
@@ -52,4 +64,188 @@ const { items } = Astro.props;
       </div>
     )
   }
+
+  {
+    showControls && (
+      <div class="hero-dots" role="group" aria-label="Select a capture" data-hero-dots>
+        {items.map((item, index) => (
+          <button
+            type="button"
+            class="hero-dot"
+            data-hero-dot
+            aria-label={`Show capture ${index + 1} of ${items.length}: ${item.alt}`}
+            aria-current={index === 0 ? 'true' : 'false'}
+          />
+        ))}
+      </div>
+    )
+  }
 </div>
+
+<script>
+  import {
+    AUTOPLAY_INTERVAL_MS,
+    INTERACTION_RESUME_MS,
+    nearestIndex,
+    nextIndex,
+    shouldShowControls,
+    wrapIndex,
+  } from '../../lib/hero-carousel';
+
+  const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
+
+  for (const root of document.querySelectorAll('[data-hero-carousel]')) {
+    const track = root.querySelector('[data-hero-track]');
+    const dotsWrap = root.querySelector('[data-hero-dots]');
+    const slides = track ? Array.from(track.querySelectorAll('[data-hero-slide]')) : [];
+    const dots = dotsWrap ? Array.from(dotsWrap.querySelectorAll('[data-hero-dot]')) : [];
+
+    if (!track || !dotsWrap || !shouldShowControls(slides.length) || dots.length !== slides.length) {
+      continue;
+    }
+
+    const reduceMotion = window.matchMedia(REDUCED_MOTION_QUERY);
+
+    // Absolute scrollLeft value that brings each slide to its snap position.
+    // Measured from the real geometry so the track gap is accounted for.
+    let targets = [];
+    let index = 0;
+    let autoplayTimer;
+    let resumeTimer;
+    let programmatic = false;
+    let programmaticFallback;
+    let hovered = false;
+    let focused = false;
+
+    const measure = () => {
+      const trackLeft = track.getBoundingClientRect().left;
+      targets = slides.map((slide) => {
+        const rect = slide.getBoundingClientRect();
+        const centered =
+          track.scrollLeft + (rect.left - trackLeft) - (track.clientWidth - rect.width) / 2;
+        return Math.max(0, centered);
+      });
+    };
+
+    const paint = (next) => {
+      index = next;
+      dots.forEach((dot, i) => {
+        dot.setAttribute('aria-current', i === index ? 'true' : 'false');
+      });
+    };
+
+    const clearAutoplay = () => {
+      if (autoplayTimer !== undefined) window.clearTimeout(autoplayTimer);
+      autoplayTimer = undefined;
+    };
+
+    const clearResume = () => {
+      if (resumeTimer !== undefined) window.clearTimeout(resumeTimer);
+      resumeTimer = undefined;
+    };
+
+    const goTo = (target, behavior = reduceMotion.matches ? 'auto' : 'smooth') => {
+      const next = wrapIndex(target, slides.length);
+      paint(next);
+      // The smooth scroll we trigger must not be mistaken for user interaction.
+      programmatic = true;
+      if (programmaticFallback !== undefined) window.clearTimeout(programmaticFallback);
+      programmaticFallback = window.setTimeout(() => {
+        programmatic = false;
+      }, 900);
+      track.scrollTo({ left: targets[next], behavior });
+    };
+
+    const scheduleAutoplay = () => {
+      clearAutoplay();
+      if (reduceMotion.matches || hovered || focused) return;
+      autoplayTimer = window.setTimeout(() => {
+        goTo(nextIndex(index, slides.length));
+        scheduleAutoplay();
+      }, AUTOPLAY_INTERVAL_MS);
+    };
+
+    const requestResume = () => {
+      clearResume();
+      if (reduceMotion.matches || hovered || focused) return;
+      resumeTimer = window.setTimeout(scheduleAutoplay, INTERACTION_RESUME_MS);
+    };
+
+    const noteInteraction = () => {
+      clearAutoplay();
+      requestResume();
+    };
+
+    measure();
+    window.addEventListener('resize', measure, { passive: true });
+
+    // The active dot follows the real scroll position, including manual scroll
+    // and swipe.
+    track.addEventListener(
+      'scroll',
+      () => {
+        const nearest = nearestIndex(track.scrollLeft, targets);
+        if (nearest !== index) paint(nearest);
+        if (!programmatic) noteInteraction();
+      },
+      { passive: true },
+    );
+
+    track.addEventListener(
+      'scrollend',
+      () => {
+        programmatic = false;
+        if (programmaticFallback !== undefined) window.clearTimeout(programmaticFallback);
+        programmaticFallback = undefined;
+      },
+      { passive: true },
+    );
+
+    // Click/tap jumps to a slide; arrow keys move focus between dots.
+    dotsWrap.addEventListener('click', (event) => {
+      const dot = event.target instanceof Element ? event.target.closest('[data-hero-dot]') : null;
+      if (!dot) return;
+      goTo(dots.indexOf(dot));
+      noteInteraction();
+    });
+
+    dotsWrap.addEventListener('keydown', (event) => {
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+      event.preventDefault();
+      const step = event.key === 'ArrowRight' ? 1 : -1;
+      const next = wrapIndex(index + step, dots.length);
+      goTo(next);
+      dots[next].focus();
+      noteInteraction();
+    });
+
+    // Pause while hovered or focused, resume once the pointer/focus leaves.
+    root.addEventListener('pointerenter', () => {
+      hovered = true;
+      clearAutoplay();
+    });
+    root.addEventListener('pointerleave', () => {
+      hovered = false;
+      requestResume();
+    });
+    root.addEventListener('focusin', () => {
+      focused = true;
+      clearAutoplay();
+    });
+    root.addEventListener('focusout', () => {
+      focused = root.contains(document.activeElement);
+      if (!focused) requestResume();
+    });
+
+    // Honour a preference change made while the page is open.
+    reduceMotion.addEventListener('change', () => {
+      if (reduceMotion.matches) clearAutoplay();
+      else scheduleAutoplay();
+    });
+
+    // Progressive enhancement: reveal the dots only now that JS owns them.
+    root.setAttribute('data-hero-ready', '');
+    paint(nearestIndex(track.scrollLeft, targets));
+    scheduleAutoplay();
+  }
+</script>
