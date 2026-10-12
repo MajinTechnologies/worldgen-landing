@@ -61,8 +61,10 @@
   padding-inline: clamp(1rem, 5vw, 4rem);
 }
 
-/* Scroll-snap keeps the carousel navigation-free: native swipe on touch, native
-   momentum and scrollbar on desktop, zero JS. */
+/* Scroll-snap still drives the track: native swipe on touch, native momentum
+   and scrollbar on desktop. The original "zero JS" decision is reverted for
+   navigation only — dots and auto-advance are layered on from
+   src/components/hero/HeroCarousel.astro. The track itself stays pure CSS. */
 .hero-track {
   display: flex;
   gap: clamp(0.75rem, 1.5vw, 1.25rem);
@@ -84,6 +86,56 @@
   max-height: 100%;
   overflow: hidden;
   border-radius: 0.75rem;
+}
+
+/* Navigation dots. Rendered in the HTML but hidden until the script marks the
+   carousel ready (data-hero-ready), so the no-JS page is exactly the scroll-snap
+   track above. Absolute so they never affect layout. */
+.hero-dots {
+  position: absolute;
+  left: 50%;
+  bottom: clamp(0.75rem, 2.5vh, 1.5rem);
+  z-index: 2;
+  display: none;
+  gap: 0.5rem;
+  transform: translateX(-50%);
+}
+
+.hero-carousel[data-hero-ready] .hero-dots {
+  display: flex;
+}
+
+.hero-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  padding: 0;
+  border: 0;
+  border-radius: 9999px;
+  background: rgb(226 232 240 / 0.35);
+  cursor: pointer;
+  transition:
+    transform 150ms ease,
+    background-color 150ms ease;
+}
+
+.hero-dot:hover {
+  background: rgb(226 232 240 / 0.6);
+}
+
+.hero-dot[aria-current='true'] {
+  background: rgb(110 231 183);
+  transform: scale(1.25);
+}
+
+.hero-dot:focus-visible {
+  outline: 2px solid rgb(110 231 183);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-dot {
+    transition: none;
+  }
 }
 
 /* The title is a watermark: it does not reserve space, so it is allowed to
