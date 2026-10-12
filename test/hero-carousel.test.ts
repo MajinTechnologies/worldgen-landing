@@ -14,8 +14,8 @@ import {
   nearestIndex,
 } from '../src/lib/hero-carousel.ts';
 
-test('autoplay interval is the agreed ~6s and resume delay is positive', () => {
-  assert.equal(AUTOPLAY_INTERVAL_MS, 6000);
+test('autoplay interval is the tuned ~3s and resume delay is positive', () => {
+  assert.equal(AUTOPLAY_INTERVAL_MS, 3000);
   assert.ok(INTERACTION_RESUME_MS > 0);
 });
 
@@ -62,19 +62,21 @@ test('nearestIndex tolerates empty target lists', () => {
 // signal — only engaging the dots (hover/focus) or a settling manual
 // scroll/swipe pauses auto-advance.
 test('autoplay runs with 2+ slides and no pause signal', () => {
-  assert.equal(shouldAutoplay(3, { paused: false, reduceMotion: false }), true);
+  assert.equal(shouldAutoplay(3, { paused: false }), true);
 });
 
 test('autoplay pauses on a control/interaction pause signal', () => {
-  assert.equal(shouldAutoplay(3, { paused: true, reduceMotion: false }), false);
+  assert.equal(shouldAutoplay(3, { paused: true }), false);
 });
 
-test('autoplay is disabled by prefers-reduced-motion', () => {
-  assert.equal(shouldAutoplay(3, { paused: false, reduceMotion: true }), false);
-  assert.equal(shouldAutoplay(3, { paused: true, reduceMotion: true }), false);
+// Regression for the run #6 follow-up: the timer must NOT depend on
+// prefers-reduced-motion. Reduced motion only swaps the scroll behaviour
+// (smooth -> auto), it never decides whether the carousel advances.
+test('autoplay is not disabled by prefers-reduced-motion', () => {
+  assert.equal(shouldAutoplay(3, { paused: false }), true);
 });
 
 test('autoplay is off with 0 or 1 slides regardless of pause signals', () => {
-  assert.equal(shouldAutoplay(0, { paused: false, reduceMotion: false }), false);
-  assert.equal(shouldAutoplay(1, { paused: false, reduceMotion: false }), false);
+  assert.equal(shouldAutoplay(0, { paused: false }), false);
+  assert.equal(shouldAutoplay(1, { paused: false }), false);
 });

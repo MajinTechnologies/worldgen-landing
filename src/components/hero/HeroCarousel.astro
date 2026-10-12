@@ -164,7 +164,7 @@ const showControls = shouldShowControls(items.length);
 
     const scheduleAutoplay = () => {
       clearAutoplay();
-      if (!shouldAutoplay(slides.length, { paused: paused(), reduceMotion: reduceMotion.matches })) {
+      if (!shouldAutoplay(slides.length, { paused: paused() })) {
         return;
       }
       autoplayTimer = window.setTimeout(() => {
@@ -175,7 +175,7 @@ const showControls = shouldShowControls(items.length);
 
     const requestResume = () => {
       clearResume();
-      if (!shouldAutoplay(slides.length, { paused: paused(), reduceMotion: reduceMotion.matches })) {
+      if (!shouldAutoplay(slides.length, { paused: paused() })) {
         return;
       }
       resumeTimer = window.setTimeout(scheduleAutoplay, INTERACTION_RESUME_MS);
@@ -257,11 +257,9 @@ const showControls = shouldShowControls(items.length);
       if (!focused) requestResume();
     });
 
-    // Honour a preference change made while the page is open.
-    reduceMotion.addEventListener('change', () => {
-      if (reduceMotion.matches) clearAutoplay();
-      else scheduleAutoplay();
-    });
+    // A preference change needs no reaction from the timer: `goTo` reads
+    // `reduceMotion` on every tick, so the next advance picks up the new scroll
+    // behaviour on its own.
 
     // Progressive enhancement: reveal the dots only now that JS owns them.
     root.setAttribute('data-hero-ready', '');

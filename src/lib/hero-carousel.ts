@@ -8,10 +8,10 @@
  */
 
 /** How long a slide is shown before the carousel advances on its own. */
-export const AUTOPLAY_INTERVAL_MS = 6000;
+export const AUTOPLAY_INTERVAL_MS = 3000;
 
 /** How long the carousel waits after user interaction before resuming auto-advance. */
-export const INTERACTION_RESUME_MS = 5000;
+export const INTERACTION_RESUME_MS = 1000;
 
 /** Dots and the timer only make sense with more than one slide. */
 export function shouldShowControls(count: number): boolean {
@@ -27,13 +27,18 @@ export interface AutoplayOptions {
    * pause would stop auto-advance permanently on desktop.
    */
   paused: boolean;
-  /** `prefers-reduced-motion: reduce` is active. */
-  reduceMotion: boolean;
 }
 
-/** Whether the auto-advance timer should be armed right now. */
+/**
+ * Autoplay depends on the slide count and the pause signal only.
+ *
+ * `prefers-reduced-motion: reduce` is deliberately NOT part of this decision: a
+ * reduced-motion user still gets the carousel, it just advances with `auto`
+ * scrolling instead of `smooth` (see `goTo` in HeroCarousel.astro). Gating the
+ * timer here made it silently disappear on machines that report `reduce`.
+ */
 export function shouldAutoplay(count: number, options: AutoplayOptions): boolean {
-  return shouldShowControls(count) && !options.paused && !options.reduceMotion;
+  return shouldShowControls(count) && !options.paused;
 }
 
 /** Normalise any index into [0, count). Safe for count <= 0. */
