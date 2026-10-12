@@ -8,6 +8,7 @@ import {
   AUTOPLAY_INTERVAL_MS,
   INTERACTION_RESUME_MS,
   shouldShowControls,
+  shouldAutoplay,
   wrapIndex,
   nextIndex,
   nearestIndex,
@@ -54,4 +55,26 @@ test('nearestIndex picks the closest scroll target', () => {
 
 test('nearestIndex tolerates empty target lists', () => {
   assert.equal(nearestIndex(120, []), 0);
+});
+
+// Regression for the run #6 report ("el timer no parece estar funcionando"):
+// the whole hero fills the viewport, so hovering it must NOT be a pause
+// signal — only engaging the dots (hover/focus) or a settling manual
+// scroll/swipe pauses auto-advance.
+test('autoplay runs with 2+ slides and no pause signal', () => {
+  assert.equal(shouldAutoplay(3, { paused: false, reduceMotion: false }), true);
+});
+
+test('autoplay pauses on a control/interaction pause signal', () => {
+  assert.equal(shouldAutoplay(3, { paused: true, reduceMotion: false }), false);
+});
+
+test('autoplay is disabled by prefers-reduced-motion', () => {
+  assert.equal(shouldAutoplay(3, { paused: false, reduceMotion: true }), false);
+  assert.equal(shouldAutoplay(3, { paused: true, reduceMotion: true }), false);
+});
+
+test('autoplay is off with 0 or 1 slides regardless of pause signals', () => {
+  assert.equal(shouldAutoplay(0, { paused: false, reduceMotion: false }), false);
+  assert.equal(shouldAutoplay(1, { paused: false, reduceMotion: false }), false);
 });
