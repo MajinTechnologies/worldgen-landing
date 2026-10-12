@@ -1,0 +1,35 @@
+---
+import HeroBackdrop from './HeroBackdrop.astro';
+import HeroCarousel from './HeroCarousel.astro';
+import HeroOverlay from './HeroOverlay.astro';
+import HeroTitle from './HeroTitle.astro';
+import { getHeroMedia } from '../../lib/hero-media';
+
+/**
+ * Hero section.
+ *
+ * Four layers, back to front: backdrop, captures, title, copy. The title is
+ * allowed to sit over the captures — it behaves as a watermark rather than
+ * claiming space, which is why it does not need the carousel to make room.
+ *
+ * The overlay layer is pointer-events-none so the carousel keeps receiving
+ * swipes underneath the copy; only the CTAs opt back in.
+ *
+ * getHeroMedia() reads public/hero/ during the build. It is not reactive: a
+ * file dropped while `astro dev` is already running needs a restart to appear.
+ */
+const items = getHeroMedia();
+---
+
+<section id="inicio" class="hero">
+  <HeroBackdrop />
+
+  <div class="hero-stage">
+    <HeroCarousel items={items} />
+  </div>
+
+  <div class="hero-overlay-layer">
+    <HeroTitle />
+    <HeroOverlay />
+  </div>
+</section>

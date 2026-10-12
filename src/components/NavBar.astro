@@ -1,0 +1,43 @@
+---
+/**
+ * Sticky bottom navbar.
+ *
+ * Sits INSIDE <main>, right after the hero, so `position: sticky; bottom: 0`
+ * pins it to the lower edge only once the hero starts scrolling off, and
+ * releases it at the end of <main>.
+ *
+ * The links stay `hidden lg:block`: five of them do not fit in a narrow bar and
+ * a half-truncated nav is worse than none. Mobile is a known gap, not an
+ * oversight.
+ */
+const links: ReadonlyArray<[string, string]> = [
+  ['The problem', '#problema'],
+  ['Capabilities', '#capacidades'],
+  ['How it works', '#como-funciona'],
+  ['Who it is for', '#para-quien'],
+  ['Integration', '#integracion'],
+];
+---
+
+<header class="site-header">
+  <div class="shell flex h-16 items-center justify-between gap-6">
+    <a class="brand" href="#inicio">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span>Majin <span class="text-emerald-300">WorldGen</span></span>
+    </a>
+
+    <nav class="hidden lg:block" aria-label="Page sections">
+      <ul class="flex items-center gap-1">
+        {
+          links.map(([label, href]) => (
+            <li>
+              <a class="nav-link" href={href}>
+                {label}
+              </a>
+            </li>
+          ))
+        }
+      </ul>
+    </nav>
+  </div>
+</header>

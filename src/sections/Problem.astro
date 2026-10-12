@@ -1,0 +1,44 @@
+---
+import SectionHead from '../components/SectionHead.astro';
+import Card from '../components/Card.astro';
+import Placeholder from '../components/Placeholder.astro';
+
+const cards: ReadonlyArray<{ title: string; body: string }> = [
+  {
+    title: 'The whole map is too heavy',
+    body: 'Loading a large world all at once fills up memory, and the bigger it gets, the longer it takes to open.',
+  },
+  {
+    title: 'Every new area is a wait',
+    body: 'When you reach a place you have not been, the game stops for a moment to get it ready. And you pay that wait over and over.',
+  },
+  {
+    title: 'You pay for detail you cannot see',
+    body: 'You show a wide horizon and keep building everything behind it with the same precision. The far view ends up costing as much as the one right next to you.',
+  },
+  {
+    title: 'Going back is a punishment',
+    body: 'Returning to a place you just walked through forces it to be rebuilt. Your steps stop being safe.',
+  },
+];
+---
+
+<section id="problema" class="section">
+  <div class="shell">
+    <SectionHead
+      eyebrow="The problem"
+      title="Every large world hits the same four walls"
+      lead="Terrain you can actually walk through always runs into the same things. And it is not a skill problem, it is a construction problem."
+    />
+    <div class="mt-12 grid gap-4 sm:grid-cols-2">
+      {cards.map((card, index) => <Card {...card} index={index + 1} />)}
+    </div>
+    <div class="mt-4">
+      <Placeholder
+        label="SCREENSHOT — the problem"
+        title="Missing the capture that shows the wait or the whole map at once."
+        hint="Replace with the capture that shows the problem. Use the alt field for the alternative text."
+      />
+    </div>
+  </div>
+</section>

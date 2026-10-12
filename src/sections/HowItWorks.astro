@@ -1,0 +1,40 @@
+---
+import SectionHead from '../components/SectionHead.astro';
+import Card from '../components/Card.astro';
+import Placeholder from '../components/Placeholder.astro';
+
+const steps: ReadonlyArray<{ title: string; body: string }> = [
+  {
+    title: 'You import it',
+    body: 'You drop the package into your project and enable it. A demo scene is there, ready to open.',
+  },
+  {
+    title: 'You tune it',
+    body: 'You choose the shape of the terrain: its density, its relief, its scale. You see the result right away and keep changing it while you play.',
+  },
+  {
+    title: 'You walk',
+    body: 'The world is put together around you as you move. When you come back to a place, it is already waiting for you.',
+  },
+];
+---
+
+<section id="como-funciona" class="section">
+  <div class="shell">
+    <SectionHead
+      eyebrow="How it works"
+      title="Three steps and you are in"
+      lead="Nothing to prepare and no files to convert. Import it, tune it, walk."
+    />
+    <div class="mt-12 grid gap-4 sm:grid-cols-3">
+      {steps.map((step, index) => <Card {...step} index={index + 1} />)}
+    </div>
+    <div class="mt-4 mx-auto max-w-4xl">
+      <Placeholder
+        label="SCREENSHOT — demo scene"
+        title="Missing the capture of the demo scene that ships with the package."
+        hint="Replace with the demo scene capture. Use the alt field for the alternative text."
+      />
+    </div>
+  </div>
+</section>

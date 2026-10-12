@@ -1,0 +1,181 @@
+# Deploy Workflow — worldgen-landing
+#
+# ==============================================================================
+# WHY THIS WORKFLOW EXISTS (read this before you "simplify" it away)
+# ==============================================================================
+#
+# This repo is PRIVATE and lives in the MajinTechnologies organization.
+# Vercel CANNOT build or deploy a private repository that belongs to an
+# organization. That is a hard Vercel limitation, not a misconfiguration on our
+# side, and there is no setting, plan or API call that works around it.
+#
+# The pattern this workflow implements:
+#
+#   MajinTechnologies/worldgen-landing   (private, org)   <-- you work here
+#              |  this workflow: push source
+#              v
+#   Lucas25rock/worldgen-landing-deploy  (private, personal) <-- Vercel watches THIS
+#              |
+#              v
+#         Vercel auto-deploy on every push
+#
+# In other words: the canonical source of truth stays private in the org repo.
+# This workflow mirrors the SOURCE CODE (not a compiled build) into a personal
+# repo that Vercel is able to access, and Vercel does the build and deploy on
+# their side from that mirror.
+#
+# The mirror is a build artifact mirror, not a second source of truth. Do not
+# commit to it by hand; do not open PRs against it. Everything lands here first
+# and reaches the mirror through this workflow.
+#
+# NOTE FOR THE NEXT MAINTAINER: if you ever see this file removed because it
+# "looks redundant", the deploy silently stops updating and Vercel keeps serving
+# the last synced build with no error anywhere. It is load-bearing.
+# ==============================================================================
+#
+# This mirrors the same pattern used by Majin-OS (see
+# Majin-OS/.github/workflows/deploy.yml), adapted to this project.
+#
+# ---------------------------------------------------------------------------
+# Required GitHub Secret
+# ---------------------------------------------------------------------------
+# In THIS repo (MajinTechnologies/worldgen-landing):
+#   Settings -> Secrets and variables -> Actions -> New repository secret
+#
+#   DEPLOY_TOKEN  =  a GitHub PAT of the PERSONAL account that owns the mirror
+#                    repo, with the `repo` scope. It needs write access to
+#                    Lucas25rock/worldgen-landing-deploy. The token value is
+#                    never hardcoded here; it is only ever read from the secret.
+#
+# ---------------------------------------------------------------------------
+# What is deliberately NOT in this file
+# ---------------------------------------------------------------------------
+# The Majin-OS version of this workflow runs Prisma migrations against Neon
+# before syncing, which needs `npm ci`, a `DATABASE_URL` and a `DIRECT_URL`.
+# None of that applies here: this project is a fully static Astro site. No
+# database, no server-side runtime, no app secrets. Vercel runs
+# `npm install && npm run build` (which invokes `astro build`) on its own
+# infrastructure from the source we push. Adding a database step to this file
+# would be cargo cult.
+#
+# NOTE: Vercel must have its Framework Preset set to "Astro" on the mirror
+# project. If it is still pinned to "Vite" from when this repo used Vite, the
+# build will invoke `vite build` and fail on the missing vite.config. The fix
+# lives in Vercel project settings, not in this file.
+
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Least privilege: the job only reads this repo. The push to the mirror is
+# authenticated with the DEPLOY_TOKEN PAT, not with the automatic GITHUB_TOKEN,
+# so GITHUB_TOKEN does not need write access to anything.
+permissions:
+  contents: read
+
+# Never let two mirrors race each other: if a push lands while a run is in
+# flight, queue instead of running concurrently against the same clone.
+concurrency:
+  group: deploy-worldgen-landing
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Mirror source to deploy repo
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Mirror source to deploy repo
+        env:
+          DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
+          DEPLOY_REPO: Lucas25rock/worldgen-landing-deploy
+        run: |
+          set -euo pipefail
+
+          if [ -z "${DEPLOY_TOKEN}" ]; then
+            echo "::error::DEPLOY_TOKEN secret is missing or empty. Add it in"
+            echo "::error::Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+
+          # Clone the empty-or-stale mirror. Credentials go in the URL, so the
+          # subsequent `git push` reuses them without a credential helper.
+          git clone --depth 1 \
+            "https://x-access-token:${DEPLOY_TOKEN}@github.com/${DEPLOY_REPO}.git" \
+            deploy-repo
+
+          # Wipe the working tree of the mirror but keep its .git, so the sync
+          # below is a full replacement: files deleted in the source are deleted
+          # in the mirror too.
+          cd deploy-repo
+          git rm -rq . || true
+          cd ..
+
+          # Copy the SOURCE CODE ONLY.
+          #
+          # This is intentionally an explicit exclude list with anchored (leading
+          # slash) patterns rather than a `for item in * .*` glob loop: `.*`
+          # expands to `.` and `..` as well, so a glob loop silently re-copies
+          # node_modules/ and dist/ into the mirror. Anchored excludes only match
+          # top-level entries, so a nested `src/dist` would still be synced.
+          #
+          # Excluded:
+          #   /.git/         source repo metadata, obviously not source code
+          #   /node_modules/ dependencies, reinstalled by Vercel
+          #   /dist/         build output; Vercel builds from source on its side
+          #   /.astro/       Astro type cache and generated types
+          #   /.vercel/      local Vercel project link/state
+          #   /.github/      our CI; copying it would make this workflow re-run
+          #                  itself against the mirror on every sync push
+          #   /deploy-repo/  the mirror clone itself (would recurse into itself)
+          #   /.env*         never mirror local secrets into another repo
+          rsync -a --delete \
+            --exclude='/.git/' \
+            --exclude='/node_modules/' \
+            --exclude='/dist/' \
+            --exclude='/.astro/' \
+            --exclude='/.vercel/' \
+            --exclude='/.github/' \
+            --exclude='/deploy-repo/' \
+            --exclude='/.env' \
+            --exclude='/.env.*' \
+            ./ deploy-repo/
+
+          cd deploy-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Mirror already up to date, nothing to commit."
+          else
+            git commit -q -m "deploy: sync from ${GITHUB_SHA}"
+            git push origin HEAD:main
+            echo "Pushed $(git rev-parse HEAD) to ${DEPLOY_REPO}"
+          fi
+
+      - name: Verify mirror contents
+        env:
+          DEPLOY_REPO: Lucas25rock/worldgen-landing-deploy
+        run: |
+          set -euo pipefail
+
+          # Guard rail: if a build artifact or a dependency tree ever reaches the
+          # mirror, fail loudly here instead of letting Vercel build a stale or
+          # bloated project.
+          for forbidden in dist node_modules .astro .vercel .env; do
+            if [ -e "deploy-repo/${forbidden}" ]; then
+              echo "::error::Forbidden path '${forbidden}' leaked into the mirror."
+              exit 1
+            fi
+          done
+
+          count=$(find deploy-repo -type f -not -path 'deploy-repo/.git/*' | wc -l)
+          echo "Mirror file count (excluding .git): ${count}"
+          echo "--- top level of mirror ---"
+          ls -A deploy-repo

@@ -1,0 +1,36 @@
+---
+import SectionHead from '../components/SectionHead.astro';
+import Card from '../components/Card.astro';
+
+const cards: ReadonlyArray<{ title: string; body: string }> = [
+  {
+    title: 'Studios with an open world ahead',
+    body: 'You need terrain for a map with no edge, and building it by hand takes months.',
+  },
+  {
+    title: 'Teams that load whole maps today',
+    body: 'You solved the problem with giant files and long waits. What was missing was something that grows with the game.',
+  },
+  {
+    title: 'Prototypes and game jams',
+    body: 'You want a world you can walk through today, instead of spending the weekend building one.',
+  },
+  {
+    title: 'Sandboxes and internal tools',
+    body: 'A free space to test mechanics on terrain that keeps itself in shape, without dirtying the main game.',
+  },
+];
+---
+
+<section id="para-quien" class="section section--alt">
+  <div class="shell">
+    <SectionHead
+      eyebrow="Who it is for"
+      title="Built for projects that have a world"
+      lead="Not an isolated prototype: this is the terrain base for a game the player actually walks through."
+    />
+    <div class="mt-12 grid gap-4 sm:grid-cols-2">
+      {cards.map((card) => <Card {...card} />)}
+    </div>
+  </div>
+</section>

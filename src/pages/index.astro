@@ -1,0 +1,44 @@
+---
+import Base from '../layouts/Base.astro';
+import NavBar from '../components/NavBar.astro';
+import Footer from '../components/Footer.astro';
+import Placeholder from '../components/Placeholder.astro';
+import Problem from '../sections/Problem.astro';
+import Capabilities from '../sections/Capabilities.astro';
+import HowItWorks from '../sections/HowItWorks.astro';
+import Audience from '../sections/Audience.astro';
+import Integration from '../sections/Integration.astro';
+import Cta from '../sections/Cta.astro';
+import Hero from '../components/hero/Hero.astro';
+
+const title = 'Majin WorldGen — Worlds that appear as you play';
+const description =
+  'A terrain world generator that builds the landscape around you as you move. Imported into your project as a package, with a demo scene that is ready to open.';
+---
+
+<Base {title} {description}>
+  <div class="page">
+    <a class="skip-link" href="#contenido">Skip to main content</a>
+
+    <main id="contenido">
+      {/*
+        The hero is a real component now, not a reserved slot. Only the
+        composition is finished — the backdrop field and the node-derived mask
+        are still open, tracked in docs/hero.md. The previous isometric mesh is
+        recoverable from commit 6c507eb if any of it is worth keeping.
+      */}
+      <Hero />
+
+      <NavBar />
+
+      <Problem />
+      <Capabilities />
+      <HowItWorks />
+      <Audience />
+      <Integration />
+      <Cta />
+    </main>
+
+    <Footer />
+  </div>
+</Base>

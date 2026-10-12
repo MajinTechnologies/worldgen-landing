@@ -1,0 +1,119 @@
+---
+import SectionHead from '../components/SectionHead.astro';
+import Placeholder from '../components/Placeholder.astro';
+
+interface Tick {
+  title: string;
+  body: string;
+}
+
+interface Panel {
+  title: string;
+  intro: string;
+  ticks: ReadonlyArray<Tick>;
+}
+
+const panels: ReadonlyArray<Panel> = [
+  {
+    title: 'It works where it has to work',
+    intro: 'Your processor stays free for the game.',
+    ticks: [
+      {
+        title: 'The graphics card does the work',
+        body: 'The terrain is built on the part of the machine that is designed for this, and your processor stays free for the game logic.',
+      },
+      {
+        title: 'Walking does not stutter',
+        body: 'Coming back to a place you already visited is instant: nothing to rebuild, no hitching, no jumps.',
+      },
+    ],
+  },
+  {
+    title: 'The terrain adapts',
+    intro: 'Detail follows distance and memory regulates itself.',
+    ticks: [
+      {
+        title: 'Detail follows distance',
+        body: 'What is close looks detailed and what is far gets simplified without the change being noticeable.',
+      },
+      {
+        title: 'The world appears around whoever is looking',
+        body: 'The whole map is never loaded: what matters now gets prepared and the rest waits its turn.',
+      },
+      {
+        title: 'Ask for as much detail as you want',
+        body: 'Push the quality as high as you like and memory sorts itself out so the game does not fall over.',
+      },
+    ],
+  },
+  {
+    title: 'You drive it',
+    intro: 'The terrain is a setting, not a baked file.',
+    ticks: [
+      {
+        title: 'Tune the terrain without recompiling',
+        body: 'Change density, relief or scale and see it right away, with the game still running.',
+      },
+      {
+        title: 'The terrain is edited live',
+        body: 'You raise hills, open valleys, carve a path: the world settles around what you did.',
+      },
+      {
+        title: 'Same seed, same world',
+        body: 'One number and you get exactly the same landscape back. You save it, you pass it on, and someone else sees it too.',
+      },
+    ],
+  },
+  {
+    title: 'It fits your project',
+    intro: 'It installs as a package and hooks in without breaking what you already have.',
+    ticks: [
+      {
+        title: 'It is a package, not a project',
+        body: 'You import it into your project and it works. It ships a demo scene so you can see it running without writing a line.',
+      },
+      {
+        title: 'It does not force your architecture',
+        body: 'It hooks in through a simple contract: you stay the owner of the scene, the clock and the rules of the game.',
+      },
+    ],
+  },
+];
+---
+
+<section id="capacidades" class="section section--alt">
+  <div class="shell">
+    <SectionHead
+      eyebrow="Capabilities"
+      title="What it does, in plain words"
+      lead="Ten behaviours you notice while playing. None of them ask you to rewrite your project."
+    />
+    <div class="mt-12 grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
+      <div class="grid gap-4 sm:grid-cols-2">
+        {
+          panels.map((panel) => (
+            <article class="panel">
+              <h3 class="panel-title">{panel.title}</h3>
+              <p class="panel-intro">{panel.intro}</p>
+              <ul class="mt-5 grid gap-4">
+                {panel.ticks.map((tick) => (
+                  <li>
+                    <h4 class="tick-title">{tick.title}</h4>
+                    <p class="tick-body">{tick.body}</p>
+                  </li>
+                ))}
+              </ul>
+            </article>
+          ))
+        }
+      </div>
+      <div class="lg:sticky lg:top-24">
+        <Placeholder
+          label="SCREENSHOT — close and far"
+          title="Missing two views of the same landscape: close detail and far detail."
+          hint="Replace with the pair of captures. Use the alt field for the alternative text."
+        />
+      </div>
+    </div>
+  </div>
+</section>

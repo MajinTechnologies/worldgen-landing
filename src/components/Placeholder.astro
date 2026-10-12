@@ -1,0 +1,24 @@
+---
+/**
+ * Placeholder for a capture or a contact channel that does not exist yet.
+ *
+ * Each one names what is missing and why it is on the page, so whoever supplies
+ * the material knows which section it belongs to and what it has to show.
+ * Replacing one with a real asset means swapping this component for an <img> or
+ * an <a>; no copy has to be re-invented.
+ */
+interface Props {
+  label: string;
+  title: string;
+  hint: string;
+  kind?: 'capture' | 'contact';
+}
+
+const { label, title, hint, kind = 'capture' } = Astro.props;
+---
+
+<div class="ph" data-kind={kind}>
+  <span class="ph-chip">{label}</span>
+  <strong class="ph-title">{title}</strong>
+  <span class="ph-hint">{hint}</span>
+</div>

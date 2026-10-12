@@ -1,0 +1,51 @@
+---
+import SectionHead from '../components/SectionHead.astro';
+import Card from '../components/Card.astro';
+import Placeholder from '../components/Placeholder.astro';
+
+/*
+ * Written deliberately without naming the target technology ("it installs as a
+ * package", "it hooks in through a contract"). If that ever gets named, it
+ * belongs here rather than being smuggled into the hero.
+ */
+const cards: ReadonlyArray<{ title: string; body: string }> = [
+  {
+    title: 'Import it and it works',
+    body: 'It is a package: you take it into your project, enable it and you have terrain.',
+  },
+  {
+    title: 'It ships a demo scene',
+    body: 'You open the demo scene, press play and walk. No prior step.',
+  },
+  {
+    title: 'It hooks in through a contract',
+    body: 'Your game stays the owner of the scene and the clock. We only deliver the terrain.',
+  },
+  {
+    title: 'Your architecture does not change',
+    body: 'It does not ask you to rewrite systems or to drop how you organise the project. It gets in and settles.',
+  },
+];
+---
+
+<section id="integracion" class="section">
+  <div class="shell">
+    <SectionHead
+      eyebrow="Integration"
+      title="It installs as a package. Done."
+      lead="The goal is that trying it costs minutes and that getting in is a step, not a project."
+    />
+    <div class="mt-12 grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)] lg:items-start">
+      <div class="grid gap-4 sm:grid-cols-2">
+        {cards.map((card) => <Card {...card} />)}
+      </div>
+      <div>
+        <Placeholder
+          label="SCREENSHOT — inside a project"
+          title="Missing the capture of the terrain running in a project that already existed."
+          hint="Replace with the integration capture. Use the alt field for the alternative text."
+        />
+      </div>
+    </div>
+  </div>
+</section>

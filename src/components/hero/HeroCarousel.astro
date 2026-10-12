@@ -1,0 +1,55 @@
+---
+import type { HeroMedia } from '../../lib/hero-media';
+
+interface Props {
+  items: readonly HeroMedia[];
+}
+
+const { items } = Astro.props;
+---
+
+<div class="relative flex h-full w-full items-center justify-center">
+  {
+    items.length > 0 ? (
+      <ul class="hero-track mask-[var(--hero-mask)]">
+        {items.map((item) => (
+          <li class="hero-slide">
+            {item.kind === 'video' ? (
+              <video
+                class="h-full w-full object-cover"
+                src={item.src}
+                poster={item.poster}
+                autoplay
+                muted
+                loop
+                playsinline
+                preload="none"
+                tabindex="-1"
+                aria-label={item.alt}
+              />
+            ) : (
+              <img
+                class="h-full w-full object-cover"
+                src={item.src}
+                alt={item.alt}
+                loading="lazy"
+                decoding="async"
+              />
+            )}
+          </li>
+        ))}
+      </ul>
+    ) : (
+      <div class="mask-[var(--hero-mask)] flex h-full w-full max-w-5xl items-center justify-center border border-dashed border-slate-400/35 bg-abyss-900/60 p-8 text-center">
+        <div class="max-w-md space-y-2">
+          <p class="ph-chip">CAROUSEL — empty</p>
+          <strong class="ph-title">No captures wired up yet.</strong>
+          <p class="ph-hint">
+            Drop any video or image into <code class="font-mono">public/hero/</code>. A leading
+            number orders the carousel; the rest of the filename is up to you.
+          </p>
+        </div>
+      </div>
+    )
+  }
+</div>

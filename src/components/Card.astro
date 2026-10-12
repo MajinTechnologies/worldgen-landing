@@ -1,0 +1,15 @@
+---
+interface Props {
+  title: string;
+  body: string;
+  index?: number;
+}
+
+const { title, body, index } = Astro.props;
+---
+
+<article class="card">
+  {index !== undefined && <span class="card-index" aria-hidden="true">{index}</span>}
+  <h3 class="card-title">{title}</h3>
+  <p class="card-body">{body}</p>
+</article>

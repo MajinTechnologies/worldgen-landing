@@ -1,0 +1,40 @@
+---
+import { hasBrandAsset } from '../../lib/brand';
+
+/**
+ * Hero title, bottom right.
+ *
+ * Two states, chosen at build time:
+ *
+ * - public/brand/title.svg exists  -> renders it.
+ * - it does not                    -> renders display text, so the composition
+ *                                     can be judged before the art lands.
+ *
+ * Dropping the file in is the only step; nothing here needs editing. That is
+ * why the artwork lives outside ../hero/ — that folder is a wildcard read at
+ * build time and would turn the wordmark into a carousel slide.
+ *
+ * Sizing is one knob: --hero-title-scale in src/styles/hero.css is the title's
+ * *width*, and the text fallback is sized in cqw against it so both states fill
+ * the same box. Whoever owns the artwork tunes it by eye.
+ *
+ * Accessibility: an image of a wordmark says nothing to a crawler or a screen
+ * reader, so the artwork is aria-hidden and the real description rides along in
+ * a visually-hidden span. The <h1> is the same element either way.
+ */
+const hasArtwork = hasBrandAsset('title.svg');
+const label = 'WorldGen — infinite procedural terrain for Unity';
+---
+
+<h1 class="hero-title">
+  {
+    hasArtwork ? (
+      <>
+        <img class="hero-title-art" src="/brand/title.svg" alt="" aria-hidden="true" />
+        <span class="sr-only">{label}</span>
+      </>
+    ) : (
+      <span class="hero-title-text">WorldGen</span>
+    )
+  }
+</h1>

@@ -1,0 +1,42 @@
+---
+/**
+ * Backdrop for the hero: an isometric node field with explicit edges, drifting
+ * on a slow travelling wave, with the cursor acting as a magnet that lifts
+ * nearby nodes off the plane.
+ *
+ * This is the slot that used to be empty. It now runs a canvas — see
+ * src/lib/node-field.ts for the field itself and docs/hero.md for why it is
+ * canvas and not SVG or WebGL.
+ *
+ * It sits behind the captures (z-index -1 in hero.css), never above them, and
+ * takes no pointer events, so it cannot swallow a click or a carousel swipe.
+ *
+ * The animation needs JS; that was an explicit trade (see docs/hero.md). Reduced
+ * motion is honoured inside the field itself, not here.
+ */
+---
+
+<div class="hero-backdrop absolute inset-0" aria-hidden="true">
+  <canvas class="hero-field" data-node-field></canvas>
+</div>
+
+<script>
+  import { createNodeField } from '../../lib/node-field';
+
+  const canvas = document.querySelector<HTMLCanvasElement>('[data-node-field]');
+
+  if (canvas) {
+    // Guarded so a hot reload cannot stack a second rAF loop on the same canvas.
+    const previous = (canvas as HTMLCanvasElement & { __nodeField?: { destroy(): void } })
+      .__nodeField;
+    previous?.destroy();
+
+    const field = createNodeField(canvas, {
+      amplitude: 5,
+      magnetRadius: 110,
+      magnetLift: 10,
+    });
+
+    (canvas as HTMLCanvasElement & { __nodeField?: { destroy(): void } }).__nodeField = field;
+  }
+</script>

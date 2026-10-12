@@ -1,0 +1,65 @@
+---
+import '../styles/global.css';
+import '../styles/hero.css';
+
+interface Props {
+  title: string;
+  description: string;
+}
+
+const { title, description } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#08060d" />
+
+    <title>{title}</title>
+    <meta name="description" content={description} />
+
+    {/* TODO: replace with the Majin mark. Still the Astro scaffold favicon. */}
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+
+    {/*
+      Only the latin subset is preloaded. latin-ext covers characters that
+      appear nowhere in the copy, so preloading it would spend a second request
+      on bytes no glyph ever needs.
+    */}
+    <link
+      rel="preload"
+      href="/fonts/space-grotesk-latin.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+
+    {/*
+      Open Graph and Twitter card.
+
+      Hardcoded here rather than injected at runtime, because that was the
+      original defect this rebuild fixes: the previous implementation wrote all
+      of this from client-side JavaScript, so every scraper that does not
+      execute JS — WhatsApp, Slack, iMessage, X, every crawler — received an
+      empty div and no metadata at all.
+
+      TODO og:image and twitter:image. No social card asset exists yet, and a
+      URL pointing at a missing file is worse than omitting the tag: scrapers
+      render a broken image instead of falling back to the text card.
+    */}
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Majin WorldGen" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:locale" content="en_US" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>
