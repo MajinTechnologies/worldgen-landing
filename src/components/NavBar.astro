@@ -1,10 +1,11 @@
 ---
 /**
- * Sticky bottom navbar.
+ * Sticky top navbar.
  *
- * Sits INSIDE <main>, right after the hero, so `position: sticky; bottom: 0`
- * pins it to the lower edge only once the hero starts scrolling off, and
- * releases it at the end of <main>.
+ * Sits INSIDE <main>, right after the hero, so `position: sticky; top: 0`
+ * pins it to the upper edge only once the hero has scrolled away, and releases
+ * it at the top of <main> — it accompanies the scroll without ever covering
+ * the hero.
  *
  * The links stay `hidden lg:block`: five of them do not fit in a narrow bar and
  * a half-truncated nav is worse than none. Mobile is a known gap, not an
