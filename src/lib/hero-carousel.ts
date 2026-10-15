@@ -13,6 +13,12 @@ export const AUTOPLAY_INTERVAL_MS = 3000;
 /** How long the carousel waits after user interaction before resuming auto-advance. */
 export const INTERACTION_RESUME_MS = 1000;
 
+/**
+ * Short window for cursor *movement* — ambient (the cursor drifts without intent),
+ * kept apart from `INTERACTION_RESUME_MS` (deliberate) so it can't kill autoplay.
+ */
+export const MOVEMENT_RESUME_MS = 200;
+
 /** Dots and the timer only make sense with more than one slide. */
 export function shouldShowControls(count: number): boolean {
   return count > 1;
@@ -21,10 +27,12 @@ export function shouldShowControls(count: number): boolean {
 /** Signals that pause the auto-advance timer while the user engages the carousel. */
 export interface AutoplayOptions {
   /**
-   * The user is engaging the controls: hovering/focusing the dots, or a manual
-   * scroll/swipe that is still settling. Deliberately does NOT include hovering
-   * the hero at large — the carousel fills the viewport, so counting that as a
-   * pause would stop auto-advance permanently on desktop.
+   * The user is engaging the controls: hovering/focusing the dots, a manual
+   * scroll/swipe that is still settling, or cursor movement inside its short
+   * auto-expiring window. Hovering the hero at large does NOT pause — the
+   * carousel fills the viewport, so that would stop auto-advance permanently on
+   * desktop. Movement does pause, but only for `MOVEMENT_RESUME_MS`, so a live
+   * cursor delays a tick instead of cancelling autoplay altogether.
    */
   paused: boolean;
 }
@@ -39,6 +47,22 @@ export interface AutoplayOptions {
  */
 export function shouldAutoplay(count: number, options: AutoplayOptions): boolean {
   return shouldShowControls(count) && !options.paused;
+}
+
+/**
+ * Interaction hold: paused for a while, always expires — the whole state is a
+ * single mutable deadline, never a durable boolean that could get stuck.
+ */
+export function createHold(
+  holdMs: number,
+): { hold(now: number): void; isHolding(now: number): boolean } {
+  let deadline = 0;
+  return {
+    hold: (now) => {
+      deadline = now + holdMs;
+    },
+    isHolding: (now) => now < deadline,
+  };
 }
 
 /** Normalise any index into [0, count). Safe for count <= 0. */

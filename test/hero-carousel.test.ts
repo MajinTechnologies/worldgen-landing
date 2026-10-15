@@ -7,11 +7,13 @@ import assert from 'node:assert/strict';
 import {
   AUTOPLAY_INTERVAL_MS,
   INTERACTION_RESUME_MS,
+  MOVEMENT_RESUME_MS,
   shouldShowControls,
   shouldAutoplay,
   wrapIndex,
   nextIndex,
   nearestIndex,
+  createHold,
 } from '../src/lib/hero-carousel.ts';
 
 test('autoplay interval is the tuned ~3s and resume delay is positive', () => {
@@ -79,4 +81,52 @@ test('autoplay is not disabled by prefers-reduced-motion', () => {
 test('autoplay is off with 0 or 1 slides regardless of pause signals', () => {
   assert.equal(shouldAutoplay(0, { paused: false }), false);
   assert.equal(shouldAutoplay(1, { paused: false }), false);
+});
+
+test('createHold returns false before any hold', () => {
+  const h = createHold(1000);
+  assert.equal(h.isHolding(0), false);
+  assert.equal(h.isHolding(500), false);
+});
+
+test('createHold becomes true immediately after hold and expires at boundary', () => {
+  const h = createHold(1000);
+  h.hold(0);
+  assert.equal(h.isHolding(0), true);
+  assert.equal(h.isHolding(999), true);
+  assert.equal(h.isHolding(1000), false);
+  assert.equal(h.isHolding(1001), false);
+});
+
+test('createHold invariante: nunca queda colgado tras múltiples retriggers', () => {
+  const holdMs = 1000;
+  const h = createHold(holdMs);
+  let ultimoHold = 0;
+  for (let t = 0; t < 1000; t++) {
+    h.hold(t);
+    ultimoHold = t;
+    assert.equal(h.isHolding(t), true);
+  }
+  // siempre vuelve a false para todo t >= ultimoHold + holdMs
+  const deadline = ultimoHold + holdMs;
+  assert.equal(h.isHolding(deadline), false);
+  assert.equal(h.isHolding(deadline + 1), false);
+  assert.equal(h.isHolding(deadline + 500), false);
+});
+
+test('createHold con distintos holdMs expira exactamente en el borde', () => {
+  const h200 = createHold(200);
+  h200.hold(10);
+  assert.equal(h200.isHolding(10 + 200 - 1), true);
+  assert.equal(h200.isHolding(10 + 200), false);
+  
+  const h500 = createHold(500);
+  h500.hold(100);
+  assert.equal(h500.isHolding(100 + 500 - 1), true);
+  assert.equal(h500.isHolding(100 + 500), false);
+});
+
+test('MOVEMENT_RESUME_MS es positivo y estrictamente menor que INTERACTION_RESUME_MS', () => {
+  assert.ok(MOVEMENT_RESUME_MS > 0);
+  assert.ok(MOVEMENT_RESUME_MS < INTERACTION_RESUME_MS);
 });
