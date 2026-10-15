@@ -86,6 +86,8 @@ const showControls = shouldShowControls(items.length);
   import {
     AUTOPLAY_INTERVAL_MS,
     INTERACTION_RESUME_MS,
+    MOVEMENT_RESUME_MS,
+    createHold,
     nearestIndex,
     nextIndex,
     shouldAutoplay,
@@ -112,11 +114,9 @@ const showControls = shouldShowControls(items.length);
     let targets = [];
     let index = 0;
     let autoplayTimer;
-    let resumeTimer;
+    let lastPointerType = '';
     let programmatic = false;
     let programmaticFallback;
-    let hovered = false;
-    let focused = false;
 
     const measure = () => {
       const trackLeft = track.getBoundingClientRect().left;
@@ -135,16 +135,6 @@ const showControls = shouldShowControls(items.length);
       });
     };
 
-    const clearAutoplay = () => {
-      if (autoplayTimer !== undefined) window.clearTimeout(autoplayTimer);
-      autoplayTimer = undefined;
-    };
-
-    const clearResume = () => {
-      if (resumeTimer !== undefined) window.clearTimeout(resumeTimer);
-      resumeTimer = undefined;
-    };
-
     const goTo = (target, behavior = reduceMotion.matches ? 'auto' : 'smooth') => {
       const next = wrapIndex(target, slides.length);
       paint(next);
@@ -157,34 +147,38 @@ const showControls = shouldShowControls(items.length);
       track.scrollTo({ left: targets[next], behavior });
     };
 
-    // Only signals that mean "the user is engaging the controls" pause the
-    // timer. Hovering the hero at large is not one of them: the carousel fills
-    // the viewport, so that would stop auto-advance permanently on desktop.
-    const paused = () => hovered || focused;
+    // Level-based pause: every tick reads the live signals, so no stored
+    // hover/focus flag can get wedged by a missed event. Hovering the hero at
+    // large is not a signal: the carousel fills the viewport, so that would
+    // stop auto-advance permanently on desktop.
+    const hold = createHold(INTERACTION_RESUME_MS);
+    const movingHold = createHold(MOVEMENT_RESUME_MS);
+    // Keep the MediaQueryList, not its snapshot: a mouse plugged in (or an
+    // emulated `hover: hover`) after load must flip the signal immediately.
+    const canHover = window.matchMedia('(hover: hover)');
+    const paused = () =>
+      document.hidden ||
+      // Control under the cursor: `lastPointerType` keeps the sticky `:hover`
+      // a tap leaves on a hybrid device from reading as a mouse hover.
+      (canHover.matches && lastPointerType !== 'touch' && dotsWrap.matches(':hover')) ||
+      !!dotsWrap.querySelector(':focus-visible') || // keyboard focus
+      hold.isHolding(Date.now()) || // recent deliberate activity
+      movingHold.isHolding(Date.now()); // recent cursor movement (short)
 
-    const scheduleAutoplay = () => {
-      clearAutoplay();
-      if (!shouldAutoplay(slides.length, { paused: paused() })) {
-        return;
-      }
-      autoplayTimer = window.setTimeout(() => {
-        goTo(nextIndex(index, slides.length));
-        scheduleAutoplay();
-      }, AUTOPLAY_INTERVAL_MS);
+    // Self-rescheduling loop: a paused tick simply postpones itself, so there
+    // is no separate re-arm path to forget.
+    const tick = () => {
+      if (shouldAutoplay(slides.length, { paused: paused() })) goTo(nextIndex(index, slides.length));
+      autoplayTimer = window.setTimeout(tick, AUTOPLAY_INTERVAL_MS);
     };
 
-    const requestResume = () => {
-      clearResume();
-      if (!shouldAutoplay(slides.length, { paused: paused() })) {
-        return;
-      }
-      resumeTimer = window.setTimeout(scheduleAutoplay, INTERACTION_RESUME_MS);
-    };
-
-    const noteInteraction = () => {
-      clearAutoplay();
-      requestResume();
-    };
+    // Background tabs throttle timers, so a returning tab could wait up to a minute
+    // for its next tick. This re-schedules; it is not a pause flag.
+    window.addEventListener('visibilitychange', () => {
+      if (document.hidden) return;
+      window.clearTimeout(autoplayTimer);
+      autoplayTimer = window.setTimeout(tick, AUTOPLAY_INTERVAL_MS);
+    });
 
     measure();
     window.addEventListener('resize', measure, { passive: true });
@@ -196,7 +190,7 @@ const showControls = shouldShowControls(items.length);
       () => {
         const nearest = nearestIndex(track.scrollLeft, targets);
         if (nearest !== index) paint(nearest);
-        if (!programmatic) noteInteraction();
+        if (!programmatic) hold(Date.now());
       },
       { passive: true },
     );
@@ -216,15 +210,33 @@ const showControls = shouldShowControls(items.length);
       const dot = event.target instanceof Element ? event.target.closest('[data-hero-dot]') : null;
       if (!dot) return;
       goTo(dots.indexOf(dot));
-      noteInteraction();
+      hold(Date.now());
     });
 
-    // Any touch/click cancels a programmatic scroll and counts as interaction,
-    // so swipe/resume behave even without hovering.
-    root.addEventListener('pointerdown', () => {
+    // Any touch/click cancels a programmatic scroll and counts as recent
+    // activity, so swipe/resume behave even without hovering. It also records
+    // which pointer kind produced it, so a touch tap cannot leave a sticky
+    // `:hover` reading as a mouse hover.
+    root.addEventListener('pointerdown', (event) => {
+      lastPointerType = event.pointerType;
       programmatic = false;
-      noteInteraction();
+      hold(Date.now());
     });
+
+    // Cursor movement is ambient, not deliberate: `pointermove` (mouse, touch
+    // and pen) re-triggers the short movingHold. It also records the pointer
+    // type, so any real mouse hover (which always ships a `pointermove` on
+    // `root`) re-arms the hover signal after a touch interaction. No throttle
+    // needed — the write is trivial and dropping intermediate events only loses
+    // a re-trigger, never an edge.
+    root.addEventListener(
+      'pointermove',
+      (event) => {
+        lastPointerType = event.pointerType;
+        movingHold.hold(Date.now());
+      },
+      { passive: true },
+    );
 
     dotsWrap.addEventListener('keydown', (event) => {
       if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
@@ -233,29 +245,12 @@ const showControls = shouldShowControls(items.length);
       const next = wrapIndex(index + step, dots.length);
       goTo(next);
       dots[next].focus();
-      noteInteraction();
+      hold(Date.now());
     });
 
-    // Pause while the dots are hovered or focused, and resume once the
-    // pointer/focus leaves them. Scoped to the controls — not the whole root —
-    // because the hero fills the viewport and a permanent hover there kept the
-    // timer disarmed (run #6 report).
-    dotsWrap.addEventListener('pointerenter', () => {
-      hovered = true;
-      clearAutoplay();
-    });
-    dotsWrap.addEventListener('pointerleave', () => {
-      hovered = false;
-      requestResume();
-    });
-    dotsWrap.addEventListener('focusin', () => {
-      focused = true;
-      clearAutoplay();
-    });
-    dotsWrap.addEventListener('focusout', () => {
-      focused = dotsWrap.contains(document.activeElement);
-      if (!focused) requestResume();
-    });
+    // The pause signals are read level-based from `:hover`/`:focus-visible` and
+    // the interaction hold, so there is nothing to wire here: no durable
+    // hover/focus flag that a missed pointerleave/focusout could wedge.
 
     // A preference change needs no reaction from the timer: `goTo` reads
     // `reduceMotion` on every tick, so the next advance picks up the new scroll
@@ -264,6 +259,6 @@ const showControls = shouldShowControls(items.length);
     // Progressive enhancement: reveal the dots only now that JS owns them.
     root.setAttribute('data-hero-ready', '');
     paint(nearestIndex(track.scrollLeft, targets));
-    scheduleAutoplay();
+    autoplayTimer = window.setTimeout(tick, AUTOPLAY_INTERVAL_MS);
   }
 </script>
