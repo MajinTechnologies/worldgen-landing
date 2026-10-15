@@ -34,10 +34,10 @@ const cards: ReadonlyArray<{ title: string; body: string }> = [
       {cards.map((card, index) => <Card {...card} index={index + 1} />)}
     </div>
     <div class="mt-4">
-      <Placeholder
-        label="SCREENSHOT — the problem"
-        title="Missing the capture that shows the wait or the whole map at once."
-        hint="Replace with the capture that shows the problem. Use the alt field for the alternative text."
+      <img
+        src="/hero/01-image.webp"
+        alt="Capture showing the problem: large worlds hitting performance walls"
+        class="w-full rounded-xl border border-white/10"
       />
     </div>
   </div>
