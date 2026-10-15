@@ -32,18 +32,37 @@ layered on top.
 - The active dot is derived from the track's real `scrollLeft` (nearest measured
   snap target), not from a private counter, so manual scroll and swipe keep it in
   sync.
-- Auto-advance is a ~6s loop. It pauses while the **dots** are hovered or
-  focused and during a settling manual scroll/swipe, and resumes after a short
-  idle delay.
-  - The hover pause is scoped to the dots, not the carousel root: the hero fills
-    the viewport, so a root-wide hover is almost always active on desktop and
-    left the timer permanently disarmed. The gating lives in
-    `shouldAutoplay()` (`src/lib/hero-carousel.ts`) so it is unit-tested.
-- `prefers-reduced-motion: reduce` disables auto-advance entirely and makes
-  navigation jumps instant (no animated scroll).
+- Auto-advance advances every `AUTOPLAY_INTERVAL_MS` (3000 ms). Pausing is
+  level-based, read fresh on every tick from signals the engine owns — there are
+  **zero durable hover/focus booleans**, so a missed `pointerleave`/`focusout`
+  cannot wedge the timer:
+  - **Deliberate** activity (pointerdown, a dot click, a non-programmatic
+    scroll/drag, the ← / → keys) pauses for `INTERACTION_RESUME_MS` (1000 ms).
+  - **Cursor movement** (`pointermove`, which covers mouse/touch/pen) pauses,
+    but only for `MOVEMENT_RESUME_MS` (200 ms). The two windows are separate on
+    purpose: a long ambient window would let a live cursor — over a hero that
+    fills the viewport — keep autoplay off in practice (the run #6 bug).
+  - The hover pause is scoped to the **dots**, not the carousel root, and only
+    applies while `canHover.matches` and `lastPointerType !== 'touch'`. Hovering
+    the hero at large is deliberately not a signal, because it fills the
+    viewport.
+  - `:focus-visible` inside the dots and `document.hidden` also pause.
+  - Each pause is an auto-expiring deadline via `createHold(holdMs)` (a single
+    mutable deadline: `hold(now)` pushes it to `now + holdMs`, `isHolding(now)`
+    is `now < deadline`). The gating lives in `shouldAutoplay()`
+    (`src/lib/hero-carousel.ts`) so it is unit-tested.
+- The `tick` loop re-schedules itself with `setTimeout` and is never cancelled: a
+  paused tick merely postpones itself, so there is no separate re-arm path to
+  forget. It re-arms on `visibilitychange` because background tabs throttle
+  timers.
+- A `programmatic` flag marks the carousel's own `scrollTo` so the advance does
+  not count as user activity.
+- `prefers-reduced-motion: reduce` does **not** disable auto-advance. It only
+  changes the scroll behaviour (`smooth` → `auto`). Gating the timer on it was a
+  bug, fixed in `1d0660d`.
 
-Constants worth knowing: `AUTOPLAY_INTERVAL_MS` and `INTERACTION_RESUME_MS` in
-`src/lib/hero-carousel.ts`.
+Constants worth knowing: `AUTOPLAY_INTERVAL_MS`, `INTERACTION_RESUME_MS` and
+`MOVEMENT_RESUME_MS` in `src/lib/hero-carousel.ts`.
 
 ## Manual verification
 
@@ -54,14 +73,17 @@ following by hand with `npm run dev`:
 - 1 item: no dots, no timer, slide centred.
 - 2+ items: one dot per item; the active dot tracks the visible slide.
 - Click/tap a dot: the track snaps to that slide.
-- Wait ~6s: advances to the next slide and loops from the last back to the first.
-  Do this with the pointer **away** from the dots — the timer must run on a
-  desktop-sized viewport, not only on touch.
-- Hover or focus the dots: auto-advance pauses; move away: it resumes.
+- Wait ~3s (do not click or move the pointer): advances to the next slide and
+  loops from the last back to the first. Do this with the pointer **away** from
+  the dots — the timer must run on a desktop-sized viewport, not only on touch.
+- Hover or focus the dots: auto-advance pauses; move away: it resumes after the
+  hold expires. Moving the cursor pauses only briefly (~200 ms) and does not
+  stop the loop.
 - Scroll/swipe by hand: the active dot follows.
 - Keyboard: Tab to the dots, Enter/Space selects, Left/Right arrows move between
   them; focus ring is visible.
-- With `prefers-reduced-motion: reduce` (devtools emulation): no auto-advance and
-  jumps are instant.
+- With `prefers-reduced-motion: reduce` (devtools emulation): auto-advance
+  **keeps running** every ~3s; only the scroll behaviour changes (instant
+  `auto` jumps instead of animated `smooth`).
 - Include a video (`kind: 'video'`) in the folder: it behaves like any slide.
 - No layout shift when the dots appear; the `mask` and hero layout are unchanged.
