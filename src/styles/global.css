@@ -53,15 +53,20 @@
 html {
   background-color: var(--color-abyss-950);
   color: var(--color-slate-200);
-  /* The navbar is sticky at the bottom of the viewport, so an anchored section
-     is hidden under the fold edge unless the scroll reserves room for it. */
-  scroll-padding-bottom: 6.5rem;
+  /* The navbar sticks to the top edge, so an anchored section would land with
+     its heading hidden under the bar unless the scroll reserves room for it.
+     4rem = the bar height (h-16 in NavBar.astro). */
+  scroll-padding-top: 4rem;
 }
 
 .page {
   position: relative;
   min-height: 100vh;
-  overflow-x: hidden;
+  /* `clip`, not `hidden`: `hidden` computes overflow-y to auto, turning .page
+     into a scroll container whose scrollport never scrolls — which kills the
+     navbar's `position: sticky`. `clip` cuts horizontal overflow without
+     establishing a scrollport. */
+  overflow-x: clip;
   /* Needed so the background grid layer (z-index: -1) stays inside this stacking
      context and above the body background, which paints on the canvas. Without
      it the layer falls behind and is invisible. */
@@ -287,21 +292,21 @@ html {
 /* --------------------------------------------------------- sticky navbar --- */
 
 /*
- * Lives INSIDE <main>, right after the hero. There, bottom: 0 pins it to the
- * lower edge only once the hero starts scrolling away, and releases it at the
- * end of <main>. The border closes on TOP because that is the side the content
+ * Lives INSIDE <main>, right after the hero. There, top: 0 pins it to the
+ * upper edge only once the hero has scrolled away, and releases it at the top
+ * of <main> — so the bar accompanies the scroll without ever covering the
+ * hero. The border closes on the BOTTOM because that is the side the content
  * is on.
  */
 .site-header {
   position: sticky;
-  bottom: 0;
+  top: 0;
   z-index: 50;
-  border-top: 1px solid rgb(255 255 255 / 0.06);
+  border-bottom: 1px solid rgb(255 255 255 / 0.06);
   background-color: color-mix(in oklab, var(--color-abyss-950) 82%, transparent);
   backdrop-filter: blur(12px);
-  /* iOS: the address bar collapses on scroll, and without this the controls sit
-     under the back gesture. */
-  padding-bottom: env(safe-area-inset-bottom);
+  /* iOS: the safe area at the top keeps the bar clear of the notch. */
+  padding-top: env(safe-area-inset-top);
 }
 
 .brand {
