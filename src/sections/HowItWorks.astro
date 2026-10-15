@@ -30,10 +30,10 @@ const steps: ReadonlyArray<{ title: string; body: string }> = [
       {steps.map((step, index) => <Card {...step} index={index + 1} />)}
     </div>
     <div class="mt-4 mx-auto max-w-4xl">
-      <Placeholder
-        label="SCREENSHOT — demo scene"
-        title="Missing the capture of the demo scene that ships with the package."
-        hint="Replace with the demo scene capture. Use the alt field for the alternative text."
+      <img
+        src="/hero/03-image.webp"
+        alt="Demo scene showing the world generation in action"
+        class="w-full rounded-xl border border-white/10"
       />
     </div>
   </div>
