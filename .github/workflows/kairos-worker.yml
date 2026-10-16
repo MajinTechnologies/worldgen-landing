@@ -1,15 +1,51 @@
-# Workflow delgado del consumidor - Kairos CI (plantilla copiable).
+# Workflow delgado del consumidor — Kairos CI (plantilla copiable).
 #
-# Este es el UNICO archivo que un repo consumidor copia. Dispara el pipeline
-# reutilizable PUBLICO de kairos-ci (kairos-pipeline.yml@vX.Y.Z), que a su vez
-# sincroniza el perfil `.opencode/` desde el tag `worker_ref` en runtime.
+# Este es el UNICO archivo que un repo consumidor copia. Invoca el pipeline
+# reutilizable **publico** (`MajinTechnologies/kairos-ci`, job `work`) y le pasa
+# `worker_ref: kairos/vX.Y.Z`: el tag del perfil **privado** en
+# `kairos-worker-poc`, que el pipeline sincroniza en runtime. El plumbing es
+# publico (`kairos-ci`); el perfil sigue privado (`kairos-worker-poc`).
 #
 # Diseno: Majin-Circino#144 (comentarios "Diseno: Cadena de sesiones atomicas"
 # y "Contrato de secrets") + Majin-Kairos/protocols/ci-chain.md.
 #
-# Anti-loop (igual que el pipeline): solo GITHUB_TOKEN de Actions, disparo
-# exclusivo por label `kairos:ci` (nunca por status:*), concurrency serializada
-# y timeout de job.
+# v1.3.0 — MODELO DE CLAIM CORREGIDO (seleccion + paralelo + release):
+#   * `kairos:ci` es la ORDEN/KILL-SWITCH del OPERADOR: la maquina NUNCA lo
+#     agrega ni lo quita (solo lo pone/saca una autoridad de Majin, fuera de
+#     protocolo). El issue se considera terminado cuando esta CERRADO.
+#   * job `select` (serializado, solo `gh`, sin node/opencode): lista los issues
+#     ABIERTOS con label `kairos:ci` y SIN `kairos:in-progress`, aplica el cap
+#     `KAIROS_MAX_ISSUES` (default 1; -1 = todos; N = primeros N) y hace CLAIM
+#     agregando `kairos:in-progress` (NADA MAS: no toca `kairos:ci`). Emite
+#     `issues` (JSON array de numeros) y `count`.
+#   * job `work`: `needs: select` + MATRIZ 1 job por issue + `concurrency`
+#     por issue (`kairos-issue-<n>`) -> N issues avanzan en paralelo y el mismo
+#     issue NUNCA corre 2 veces a la vez (tampoco entre runs).
+#   * job `release`: `needs: [select, work]` + `if: always()` + MATRIZ por issue:
+#     quita `kairos:in-progress` SIEMPRE (aunque el reusable falle o no
+#     arranque) para que el proximo cron reintente. Nunca toca `kairos:ci`.
+#     Nada deja `kairos:in-progress` sin trabajo detras (cierra el hallazgo de
+#     Caronte #2: el catch-up guard ahora vive en `select`, ANTES del claim).
+#   * El prompt del worker NO manipula labels: el ciclo de vida del label es
+#     100% del YAML (`select` reclama, `release` libera).
+#   * Sin issues elegibles -> `count=0` -> `work`/`release` no se instancian
+#     (sentinel `[0]` en la matriz + gate por `count`).
+#
+# Anti-loop (el claim/release NO re-disparan el workflow):
+#   - Solo GITHUB_TOKEN de Actions: los eventos que genera ese token NO
+#     re-disparan workflows -> agregar `kairos:in-progress` (select) y quitarlo
+#     (release) con este token son silenciosos.
+#   - Disparo exclusivo por label `kairos:ci` (nunca por status:*).
+#   - `concurrency` vive SOLO en este caller y A NIVEL JOB (`kairos-select` y
+#     `kairos-issue-<n>`): SIN grupo a nivel workflow, asi los runs de issues
+#     distintos NO se serializan entre si. El reusable NO declara `concurrency`
+#     (PITFALL: ci-chain.md seccion 13.5).
+#   - timeout de job (lo declara el reusable, 45 min).
+#
+# Avance entre runs: como la maquina nunca re-agrega `kairos:ci`, la cadena
+# avanza con el CRON de catch-up (y con `workflow_dispatch`): al liberar
+# `kairos:in-progress`, el proximo cron vuelve a reclamar el issue y ejecuta la
+# etapa siguiente. Cada run, ademas, encadena cuantas etapas pueda.
 name: kairos-worker
 
 on:
@@ -26,41 +62,198 @@ on:
           - guard-check
         default: chain
   schedule:
-    # Catch-up 6x diario (01/05/09/14/18/22 ART = 04/08/12/17/21/01 UTC, el 22 ART cae al dia UTC siguiente): reanuda issues con kairos:ci que no avanzaron por evento.
+    # Catch-up 6x diario (01/05/09/14/18/22 ART = 04/08/12/17/21/01 UTC, el 22 ART cae al dia UTC siguiente): reanuda issues con kairos:ci que no avanzaron (o que quedaron libres tras un release).
     - cron: "0 1,4,8,12,17,21 * * *"
 
 permissions:
   contents: write   # etapa 3: crea ramas y pushea (flujo branch + PR)
-  issues: write     # comentarios + labels de la cadena
+  issues: write     # comentarios + claim/release de labels (select/release)
   pull-requests: write  # worker crea/edita PRs y pide reviewers (flujo branch + PR)
-  actions: read     # el guard lista workflow runs via API
-
-concurrency:
-  group: kairos-worker
-  cancel-in-progress: false
+  actions: read     # el catch-up guard (en select) lista workflow runs via API
 
 jobs:
-  worker:
+  # ── select: seleccion + claim de issues (serializado) ──────────────────────
+  # Corre ANTES que nada en cada run. Un solo job (no matriz) bajo el group
+  # `kairos-select` con cancel-in-progress: false -> dos runs que llegan juntos
+  # se serializan aqui y NINGUN issue puede ser reclamado dos veces.
+  select:
     # Solo label kairos:ci (y solo issues abiertos). Demas labels: no corre.
+    # (workflow_dispatch y schedule siempre pasan: el evento no es `issues`).
     if: >-
       github.event_name != 'issues' ||
       (github.event.label.name == 'kairos:ci' && github.event.issue.state == 'open')
-    # Invoca el pipeline reutilizable PUBLICO (kairos-ci). La plomeria es
-    # publica; el perfil `.opencode/` sigue PRIVADO en kairos-worker-poc y lo
-    # baja el pipeline en runtime via KAIROS_WORKER_TOKEN.
-    #
-    # El perfil `.opencode/` NO viaja entre jobs (este job corre en un runner
-    # nuevo): lo sincroniza el propio pipeline reutilizable desde `worker_ref`,
-    # por eso el input se pasa aca.
-    #
-    # bump: el ref del `uses:` es la version de kairos-ci (vX.Y.Z); el input
-    # `worker_ref` es el tag del perfil privado en kairos-worker-poc (kairos/vX.Y.Z).
-    uses: MajinTechnologies/kairos-ci/.github/workflows/kairos-pipeline.yml@v1.0.1
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: kairos-select
+      cancel-in-progress: false
+    outputs:
+      issues: ${{ steps.select.outputs.issues }}   # JSON array de numeros, p.ej. [12,15]
+      count: ${{ steps.select.outputs.count }}     # jobs `work`/`release` a lanzar (0 = ninguno)
+    env:
+      GH_TOKEN: ${{ github.token }}   # gh CLI (anti-loop: token de Actions)
+      GH_REPO: ${{ github.repository }}   # sin checkout: gh no infiere el repo
+      MODE: ${{ inputs.mode || 'chain' }}
+      EVENT_NAME: ${{ github.event_name }}
+      # Var per-repo OPCIONAL (NO registrarla: el default vive en este YAML).
+      # -1 = todos los elegibles; N = primeros N.
+      KAIROS_MAX_ISSUES: ${{ vars.KAIROS_MAX_ISSUES }}
+    steps:
+      # Solo `gh` (ubuntu-latest ya lo trae): sin checkout, sin node, sin
+      # opencode — el select es barato y no toca el stack del worker.
+      - name: "Select + claim (gh only)"
+        id: select
+        run: |
+          set -euo pipefail
+
+          {
+            echo "### Select + claim (repo ${GH_REPO})"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # Catch-up guard (vive ACA, ANTES del claim -> hallazgo de Caronte #2):
+          # se evalua en `schedule` (decide si reclamar) y en `guard-check`
+          # (smoke: solo reporta). Usa `actions: read` (workflow permissions).
+          guard_skip="false"
+          if [ "${EVENT_NAME}" = "schedule" ] || [ "${MODE}" = "guard-check" ]; then
+            since="$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ)"
+            url="repos/${GH_REPO}/actions/workflows/kairos-worker.yml/runs?created=%3E%3D${since}&per_page=100"
+            recent="$(gh api "$url" --jq '[.workflow_runs[] | select(.event != "schedule")] | length' 2>/dev/null || echo 0)"
+            if [ "${recent:-0}" -gt 0 ]; then
+              guard_skip="true"
+              echo "Catch-up guard: skip=true (${recent} run(s) por evento en las ultimas 24h)." >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "Catch-up guard: skip=false (ningun run por evento en las ultimas 24h)." >> "$GITHUB_STEP_SUMMARY"
+            fi
+          fi
+
+          # Smoke tests (auth-check / guard-check): NO se reclama ningun issue;
+          # se emite el sentinel [0] con count=1 para que corra UN job `work`
+          # que solo hace el chequeo (sin stack del worker ni cadena).
+          if [ "${MODE}" != "chain" ]; then
+            {
+              echo "issues=[0]"
+              echo "count=1"
+            } >> "$GITHUB_OUTPUT"
+            echo "Modo \`chain\` NO solicitado (MODE=${MODE}): sin claim; 1 job work sentinel (smoke)." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if [ "${guard_skip}" = "true" ]; then
+            {
+              echo "issues=[0]"
+              echo "count=0"
+            } >> "$GITHUB_OUTPUT"
+            echo "Catch-up **salta**: no se reclama nada (anti-duplicacion)." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # El label de trabajo existe? (auto-reparacion: `gh issue edit
+          # --add-label` falla si el label no existe)
+          gh label create "kairos:in-progress" \
+            --color fbca04 \
+            --description "Issue reclamado por un job work de Kairos CI" \
+            2>/dev/null || true
+
+          # 1) listar elegibles: ABIERTOS + label kairos:ci + SIN kairos:in-progress.
+          #    El "sin label" se hace por search (gh --search), no hay flag nativo.
+          #    `--jq` es el de gh (gojq interno): no se depende de jq externo.
+          numbers="$(gh issue list --state open --label kairos:ci \
+            --search "-label:kairos:in-progress" \
+            --json number --limit 1000 --jq '.[].number')"
+          eligible=()
+          if [ -n "${numbers}" ]; then
+            mapfile -t eligible <<< "${numbers}"
+          fi
+
+          if [ "${#eligible[@]}" -eq 0 ]; then
+            {
+              echo "issues=[0]"
+              echo "count=0"
+            } >> "$GITHUB_OUTPUT"
+            echo "0 issues elegibles (abiertos + \`kairos:ci\` - \`kairos:in-progress\`): no se lanza ningun job \`work\`." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # 2) cap (KAIROS_MAX_ISSUES): default 1 | -1 = todos | N = primeros N
+          max="${KAIROS_MAX_ISSUES:-1}"
+          if [ "${max}" = "-1" ]; then
+            selected=("${eligible[@]}")
+          elif [[ "${max}" =~ ^[0-9]+$ ]]; then
+            selected=("${eligible[@]:0:max}")
+          else
+            echo "::warning::KAIROS_MAX_ISSUES invalido ('${max}') - se usa el default 1."
+            selected=("${eligible[@]:0:1}")
+          fi
+
+          if [ "${#selected[@]}" -eq 0 ]; then
+            {
+              echo "issues=[0]"
+              echo "count=0"
+            } >> "$GITHUB_OUTPUT"
+            echo "Cap \`KAIROS_MAX_ISSUES=${max}\` -> 0 issues seleccionados: no se lanza ningun job \`work\`." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # 3) claim = AGREGAR `kairos:in-progress`. NADA MAS: `kairos:ci` es la
+          #    orden/kill-switch del operador y la maquina NO lo toca.
+          #    Con GITHUB_TOKEN => NO re-dispara el workflow (anti-loop).
+          claimed=()
+          for n in "${selected[@]}"; do
+            if gh issue edit "${n}" --add-label "kairos:in-progress" > /dev/null; then
+              claimed+=("${n}")
+              echo "- Claimed #${n}: \`kairos:in-progress\` agregado (\`kairos:ci\` intacto)" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "::warning::No se pudo reclamar #${n} (¿otro run se lo llevo?); se omite."
+            fi
+          done
+
+          if [ "${#claimed[@]}" -eq 0 ]; then
+            {
+              echo "issues=[0]"
+              echo "count=0"
+            } >> "$GITHUB_OUTPUT"
+            echo "Ningun issue reclamado efectivamente: 0 jobs \`work\`." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          mapfile -t sorted < <(printf '%s\n' "${claimed[@]}" | sort -n)
+          issues_json="[$(IFS=,; echo "${sorted[*]}")]"
+          {
+            echo "issues=${issues_json}"
+            echo "count=${#claimed[@]}"
+          } >> "$GITHUB_OUTPUT"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Issues seleccionados: \`${issues_json}\` (cap KAIROS_MAX_ISSUES=${max}, elegibles=${#eligible[@]})." >> "$GITHUB_STEP_SUMMARY"
+
+  # ── work: 1 job por issue, en paralelo ─────────────────────────────────────
+  # `strategy.matrix` en `uses:` es valido; el `concurrency` por issue evita
+  # que el MISMO issue corra 2 veces (entre runs o dentro del mismo run) y
+  # deja correr en paralelo a issues DISTINTOS (groups distintos).
+  #
+  # GOTCHA matriz vacia ("Matrix must define at least one vector"): si no hay
+  # elegibles, `issues` no es [] sino el sentinel `[0]` y el gate
+  # `count != '0'` saltea el job (la matriz valida, el job no corre).
+  work:
+    needs: select
+    if: needs.select.outputs.count != '0'
+    strategy:
+      fail-fast: false   # un issue rojo no cancela los demas
+      matrix:
+        issue: ${{ fromJSON(needs.select.outputs.issues) }}
+    concurrency:
+      group: kairos-issue-${{ matrix.issue }}
+      cancel-in-progress: false
+    # bump (2 lugares, namespaces distintos):
+    #   * `uses:` -> tag de `kairos-ci` (plumbing publico): `vX.Y.Z`
+    #   * `worker_ref` -> tag de `kairos-worker-poc` (perfil privado): `kairos/vX.Y.Z`
+    uses: MajinTechnologies/kairos-ci/.github/workflows/kairos-pipeline.yml@v1.3.0
     with:
       mode: ${{ inputs.mode || 'chain' }}
-      issue_number: ${{ github.event.issue.number }}
+      # sentinel 0 = sin issue real (solo modos smoke): se pasa vacio
+      issue_number: ${{ matrix.issue != 0 && format('{0}', matrix.issue) || '' }}
       event_name: ${{ github.event_name }}
-      worker_ref: kairos/v1.1.0
+      worker_ref: kairos/v1.3.0
       operator_name: "Equipo de Majin"   # ajustar por proyecto (MAJIN_OPERATOR_NAME)
     # Secretos: OPENCODE_AUTH/GROQ_API_KEY opcionales (auth del worker);
     # KAIROS_WORKER_TOKEN es el PAT fine-grained que baja el perfil .opencode/
@@ -72,3 +265,39 @@ jobs:
       OPENCODE_AUTH: ${{ secrets.OPENCODE_AUTH }}
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
       KAIROS_WORKER_TOKEN: ${{ secrets.KAIROS_WORKER_TOKEN }}
+
+  # ── release: liberar el claim SIEMPRE (aunque work falle) ──────────────────
+  # 1 job por issue (misma matriz que `work`), `needs: [select, work]` +
+  # `if: always()`: corre aun si el reusable falla o ni arranca, para quitar
+  # `kairos:in-progress` y dejar el issue re-elegible por el proximo cron.
+  # Gate `count != '0'` (+ guarda contra select sin output). NUNCA toca
+  # `kairos:ci`. El sentinel 0 (modos smoke) no tiene issue: no-op.
+  release:
+    needs: [select, work]
+    if: >-
+      always() &&
+      needs.select.outputs.count != '' &&
+      needs.select.outputs.count != '0'
+    strategy:
+      fail-fast: false
+      matrix:
+        issue: ${{ fromJSON(needs.select.outputs.issues) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}   # anti-loop: token de Actions
+      GH_REPO: ${{ github.repository }}
+      ISSUE: ${{ matrix.issue }}
+    steps:
+      - name: "Release claim (quita kairos:in-progress)"
+        run: |
+          set -uo pipefail
+          if [ "${ISSUE}" = "0" ]; then
+            echo "Sentinel (sin issue): nada que liberar." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if gh issue edit "${ISSUE}" --remove-label "kairos:in-progress" > /dev/null; then
+            echo "- Released #${ISSUE}: \`kairos:in-progress\` removido (\`kairos:ci\` intacto)." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::No se pudo liberar #${ISSUE} (¿label ya ausente?); el cron re-elegira si aplica." >> "$GITHUB_STEP_SUMMARY"
+          fi
